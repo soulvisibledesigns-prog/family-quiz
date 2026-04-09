@@ -3,38 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Family Quiz Party</title>
+    <title>Quiz Party - Host Mode</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
-        body { background: #050505; color: #fff; font-family: -apple-system, sans-serif; overflow-x: hidden; }
-        .bg-card { background: #111; border: 1px solid #222; border-radius: 32px; }
-        .btn-ios { background: #1c1c1e; border: 1px solid #3a3a3c; border-radius: 16px; transition: all 0.2s; }
-        .btn-ios:active { transform: scale(0.95); background: #007AFF; }
-        .timer-ring { transition: stroke-dashoffset 1s linear; stroke: #0ea5e9; }
-        #qrcode img { margin: 0 auto; border: 8px solid white; border-radius: 12px; }
+        body { background: #050505; color: #fff; font-family: sans-serif; overflow: hidden; }
+        .bg-card { background: #0a0a0a; border: 1px solid #222; border-radius: 24px; }
+        .timer-ring { transition: stroke-dashoffset 1s linear; stroke: #007AFF; }
+        .player-pill { background: #1a1a1a; border: 1px solid #333; transition: all 0.3s; }
+        #qrcode img { margin: 0 auto; border: 8px solid white; border-radius: 12px; display: inline-block !important; }
     </style>
 </head>
 <body class="flex flex-col items-center justify-center min-h-screen p-6 text-center">
 
-    <div id="game-ui" class="w-full max-w-2xl">
-        <div class="animate-pulse font-black italic">INITIALIZING ARENA...</div>
+    <div id="game-ui" class="w-full max-w-4xl">
+        <div class="animate-pulse font-bold tracking-tighter">SETTING UP GAME HUB...</div>
     </div>
 
     <script>
-        let peer, connections = [];
-        let roomCode = "";
+        let peer, roomCode = "";
         let players = [];
         let state = {
             step: 'start',
             targetPlayers: 2,
-            qLimit: 10,
             currentIdx: 0,
             questions: [],
             timer: 20,
-            isRevealed: false,
-            hostName: ''
+            revealTimer: 5,
+            isRevealed: false
         };
 
         function render() {
@@ -42,129 +39,53 @@
             const urlParams = new URLSearchParams(window.location.search);
             const autoJoin = urlParams.get('join');
 
+            // --- PLAYER JOIN VIEW ---
+            if (autoJoin || state.role === 'player') {
+                renderPlayerView(ui, autoJoin);
+                return;
+            }
+
+            // --- HOST VIEWS ---
             if (state.step === 'start') {
                 ui.innerHTML = `
-                    <div class="bg-card p-10 shadow-2xl">
-                        <h1 class="text-5xl font-black mb-10 italic tracking-tighter">QUIZ PARTY</h1>
-                        <div class="grid gap-4">
-                            <button onclick="state.step='host-config';render()" class="p-6 bg-blue-600 rounded-3xl font-bold text-xl shadow-lg">HOST (TV)</button>
-                            <button onclick="state.step='join-input';render()" class="p-6 bg-zinc-800 rounded-3xl font-bold text-xl">JOIN (iPhone)</button>
+                    <div class="bg-card p-12 max-w-md mx-auto shadow-2xl">
+                        <h1 class="text-5xl font-black mb-10 italic tracking-tighter uppercase">Quiz Hub</h1>
+                        <div class="mb-8">
+                            <p class="text-xs font-bold text-zinc-500 uppercase mb-4">Players Joining Tonight?</p>
+                            <div class="flex justify-center gap-3">
+                                ${[2,3,4,8].map(n => `<button onclick="state.targetPlayers=${n};render()" class="w-14 h-14 rounded-full font-bold ${state.targetPlayers==n?'bg-blue-600 border-transparent':'bg-zinc-900 border border-zinc-700'}">${n}</button>`).join('')}
+                            </div>
                         </div>
-                    </div>`;
-            } else if (state.step === 'host-config') {
-                ui.innerHTML = `
-                    <div class="bg-card p-10">
-                        <h2 class="text-2xl font-bold mb-8 italic">HOST SETUP</h2>
-                        <input id="hostNameInput" type="text" placeholder="YOUR NAME" class="w-full p-5 bg-zinc-900 rounded-2xl mb-6 text-center font-bold">
-                        <p class="text-xs font-bold text-zinc-500 uppercase mb-4">Total Players (Including You)</p>
-                        <div class="flex justify-center gap-3 mb-8">
-                            ${[2,3,4,8].map(n => `<button onclick="state.targetPlayers=${n};render()" class="w-14 h-14 rounded-full font-bold ${state.targetPlayers==n?'bg-blue-600':'bg-zinc-800'}">${n}</button>`).join('')}
-                        </div>
-                        <button onclick="setupHost()" class="w-full py-5 bg-white text-black font-bold rounded-2xl">CREATE ROOM</button>
+                        <button onclick="initHost()" class="w-full py-5 bg-white text-black font-bold rounded-2xl hover:bg-zinc-200 transition">CREATE ROOM</button>
                     </div>`;
             } else if (state.step === 'lobby') {
                 ui.innerHTML = `
-                    <div class="bg-card p-10">
-                        <div id="qrcode" class="mb-6 flex justify-center"></div>
-                        <p class="text-zinc-500 font-bold mb-8">ROOM CODE: <span class="text-white">${roomCode}</span></p>
-                        <div class="text-left bg-black/40 p-6 rounded-2xl border border-zinc-800">
-                            <p class="text-xs font-bold text-blue-500 uppercase mb-4">Joined (${players.length}/${state.targetPlayers})</p>
-                            <div class="grid grid-cols-2 gap-3">
-                                ${players.map(p => `<div class="bg-zinc-900 p-3 rounded-xl border border-zinc-800">✅ ${p.name}</div>`).join('')}
+                    <div class="bg-card p-12 flex flex-col items-center shadow-2xl">
+                        <div id="qrcode" class="mb-6"></div>
+                        <p class="text-zinc-500 text-xs font-bold mb-2 uppercase tracking-widest">Scan with iPhone to Play</p>
+                        <div class="text-5xl font-black mb-12 tracking-widest text-blue-500">${roomCode}</div>
+                        <div class="w-full max-w-lg">
+                            <p class="text-left text-xs font-bold text-zinc-500 uppercase mb-4">Players in Lobby (${players.length}/${state.targetPlayers})</p>
+                            <div class="grid grid-cols-2 gap-4">
+                                ${players.map(p => `<div class="player-pill p-4 rounded-xl text-lg font-bold">✅ ${p.name}</div>`).join('')}
                             </div>
                         </div>
                     </div>`;
                 new QRCode(document.getElementById("qrcode"), {
                     text: window.location.origin + window.location.pathname + "?join=" + roomCode,
-                    width: 180, height: 180
+                    width: 200, height: 200
                 });
-            } else if (state.step === 'join-input') {
-                ui.innerHTML = `
-                    <div class="bg-card p-10">
-                        <h2 class="text-2xl font-bold mb-8">JOIN THE PARTY</h2>
-                        <input id="pName" type="text" placeholder="NAME" class="w-full p-5 bg-zinc-900 rounded-2xl mb-4 text-center font-bold uppercase">
-                        ${!autoJoin ? `<input id="pCode" type="text" placeholder="CODE" class="w-full p-5 bg-zinc-900 rounded-2xl mb-6 text-center font-bold uppercase">` : ''}
-                        <button onclick="joinMatch('${autoJoin}')" class="w-full py-5 bg-blue-600 rounded-2xl font-bold">JOIN GAME</button>
-                    </div>`;
             } else if (state.step === 'playing') {
-                renderGame();
-            }
-        }
-
-        async function setupHost() {
-            state.hostName = document.getElementById('hostNameInput').value || 'Host';
-            roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-            players.push({ name: state.hostName, score: 0, isHost: true });
-            
-            peer = new Peer(roomCode);
-            peer.on('open', () => { state.step = 'lobby'; render(); });
-            peer.on('connection', (c) => {
-                c.on('data', (data) => {
-                    if (data.type === 'join') {
-                        players.push({ name: data.name, score: 0, conn: c });
-                        render();
-                        if (players.length >= state.targetPlayers) startGame();
-                    }
-                });
-            });
-        }
-
-        async function joinMatch(auto) {
-            const name = document.getElementById('pName').value;
-            const code = (auto || document.getElementById('pCode').value).toUpperCase();
-            peer = new Peer();
-            peer.on('open', () => {
-                const conn = peer.connect(code);
-                conn.on('open', () => {
-                    conn.send({ type: 'join', name: name });
-                    document.getElementById('game-ui').innerHTML = `<div class="bg-card p-10"><h2 class="text-3xl font-bold italic">READY!</h2><p class="text-zinc-500">Look at the TV...</p></div>`;
-                });
-                conn.on('data', (d) => { if(d.type==='start') { state.questions = d.qs; state.step='playing'; render(); } });
-            });
-        }
-
-        async function startGame() {
-            const res = await fetch(`https://opentdb.com/api.php?amount=10&difficulty=easy&type=multiple`);
-            const d = await res.json();
-            state.questions = d.results.map(q => ({
-                q: decodeHTML(q.question), c: decodeHTML(q.correct_answer),
-                a: [...q.incorrect_answers.map(decodeHTML), decodeHTML(q.correct_answer)].sort(() => Math.random()-0.5),
-                cat: q.category.toUpperCase()
-            }));
-            state.step = 'playing';
-            players.forEach(p => p.conn && p.conn.send({ type: 'start', qs: state.questions }));
-            render();
-            startTimer();
-        }
-
-        function renderGame() {
-            const q = state.questions[state.currentIdx];
-            const ui = document.getElementById('game-ui');
-            ui.innerHTML = `
-                <div class="flex justify-between items-center mb-6">
-                    <span class="px-3 py-1 bg-blue-600 rounded-full text-[10px] font-bold uppercase">${q.cat}</span>
-                    <div class="text-xl font-black">${state.timer}s</div>
-                </div>
-                <div class="bg-card p-10 mb-8 min-h-[200px] flex items-center justify-center">
-                    <h2 class="text-3xl font-bold leading-tight">${q.q}</h2>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    ${q.a.map(opt => `<button onclick="submitAns('${opt}')" class="btn-ios p-6 font-bold text-lg">${opt}</button>`).join('')}
-                </div>`;
-        }
-
-        function submitAns(ans) {
-            if (state.isRevealed) return;
-            // Logic for scoring and next question...
-            state.currentIdx++;
-            if (state.currentIdx >= state.questions.length) state.step = 'end';
-            render();
-        }
-
-        function decodeHTML(h) { const t = document.createElement("textarea"); t.innerHTML = h; return t.value; }
-        function startTimer() { setInterval(() => { if(state.step==='playing'){state.timer--; render();} }, 1000); }
-
-        render();
-    </script>
-</body>
-</html>
+                const q = state.questions[state.currentIdx];
+                ui.innerHTML = `
+                    <div class="flex justify-between items-center mb-10 px-4">
+                        <div class="px-4 py-2 bg-blue-600 rounded-full text-xs font-bold tracking-widest uppercase">${q.cat}</div>
+                        <div class="text-4xl font-black text-blue-500">${state.timer}s</div>
+                    </div>
+                    <div class="bg-card p-16 mb-10 shadow-inner">
+                        <h2 class="text-5xl font-bold leading-tight">${q.q}</h2>
+                    </div>
+                    <div class="grid grid-cols-2 gap-6 opacity-80">
+                        ${q.a.map((opt, i) => {
+                            const colors = ['#ef4444', '#3b82f6', '#eab308', '#22c55e'];
+                            const isCorrect =
