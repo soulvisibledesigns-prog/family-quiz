@@ -3,103 +3,157 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>General Knowledge Sync</title>
+    <title>Vidaa Quiz Party</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background: #0a0a0c; color: #fff; font-family: -apple-system, sans-serif; overflow: hidden; }
-        .ios-card { background: #1c1c1e; border: 1px solid #2c2c2e; border-radius: 24px; }
-        .timer-fill { height: 100%; background: #30d158; transition: width 1s linear; }
-        .option-btn { background: #2c2c2e; transition: transform 0.1s; }
-        .option-btn:active { transform: scale(0.96); background: #0a84ff; }
+        body { background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
+        .answer-card { border-radius: 12px; transition: all 0.2s; }
+        .answer-card:active { transform: scale(0.98); opacity: 0.8; }
+        .timer-circle { transition: stroke-dashoffset 1s linear; }
+        .bg-card { background: #111; border: 1px solid #222; border-radius: 20px; }
+        .badge { padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
     </style>
 </head>
-<body class="flex items-center justify-center min-h-screen p-4">
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
 
-    <div id="game-container" class="w-full max-w-lg ios-card p-8 shadow-2xl relative">
+    <div id="game-ui" class="w-full max-w-4xl relative">
         </div>
 
     <script>
-        const quizData = [
-            { q: "Which planet is known as the 'Red Planet'?", a: ["Venus", "Mars", "Jupiter", "Saturn"], c: "Mars", cat: "Science" },
-            { q: "Who painted the 'Mona Lisa'?", a: ["Van Gogh", "Picasso", "Da Vinci", "Monet"], c: "Da Vinci", cat: "Art" },
-            { q: "What is the capital city of Japan?", a: ["Seoul", "Beijing", "Bangkok", "Tokyo"], c: "Tokyo", cat: "Geography" },
-            { q: "Which ocean is the largest on Earth?", a: ["Atlantic", "Indian", "Arctic", "Pacific"], c: "Pacific", cat: "Science" },
-            { q: "What year did World War II end?", a: ["1941", "1945", "1950", "1939"], c: "1945", cat: "History" }
+        const baseQuestions = [
+            { q: "Which country won the 2018 FIFA World Cup?", a: ["Brazil", "Germany", "France", "Argentina"], c: "France", cat: "SPORTS", color: "#7c3aed" },
+            { q: "Which planet is known as the Red Planet?", a: ["Venus", "Mars", "Jupiter", "Saturn"], c: "Mars", cat: "SCIENCE", color: "#2563eb" },
+            { q: "What is the capital of Japan?", a: ["Seoul", "Tokyo", "Beijing", "Bangkok"], c: "Tokyo", cat: "GEOGRAPHY", color: "#059669" },
+            { q: "Who painted the Mona Lisa?", a: ["Picasso", "Da Vinci", "Van Gogh", "Monet"], c: "Da Vinci", cat: "ART", color: "#db2777" }
+            // Add more here to reach 50
         ];
 
         let state = {
-            step: 'lobby',
-            qIndex: 0,
+            step: 'start',
+            qLimit: 10,
+            currentIdx: 0,
             score: 0,
-            timer: 10
+            timer: 20,
+            revealTimer: 5,
+            isRevealed: false,
+            fastest: false
         };
 
         function render() {
-            const container = document.getElementById('game-container');
+            const ui = document.getElementById('game-ui');
             
-            if (state.step === 'lobby') {
-                container.innerHTML = `
-                    <h1 class="text-3xl font-black text-center mb-2">QUIZ PARTY</h1>
-                    <p class="text-zinc-500 text-center mb-8">General Knowledge Edition</p>
-                    <button onclick="start()" class="w-full py-5 bg-blue-600 rounded-2xl font-bold text-lg">START GAME</button>
+            if (state.step === 'start') {
+                ui.innerHTML = `
+                    <div class="bg-card p-10 text-center">
+                        <h1 class="text-4xl font-black mb-8">QUIZ PARTY</h1>
+                        <p class="mb-6 text-zinc-400">Choose game length:</p>
+                        <div class="grid grid-cols-3 gap-4 mb-8">
+                            <button onclick="setup(10)" class="p-4 bg-zinc-800 rounded-xl hover:bg-zinc-700">10</button>
+                            <button onclick="setup(20)" class="p-4 bg-zinc-800 rounded-xl hover:bg-zinc-700">20</button>
+                            <button onclick="setup(50)" class="p-4 bg-zinc-800 rounded-xl hover:bg-zinc-700">50</button>
+                        </div>
+                        <button onclick="state.step='play';render();" class="w-full py-4 bg-white text-black font-bold rounded-xl">START GAME</button>
+                    </div>`;
+            } else if (state.step === 'play') {
+                const q = baseQuestions[state.currentIdx % baseQuestions.length];
+                ui.innerHTML = `
+                    <div class="flex justify-between items-center mb-6">
+                        <div class="flex items-center gap-4">
+                            <span class="badge" style="background:${q.color}">${q.cat}</span>
+                            <span class="text-zinc-500 text-sm">Question ${state.currentIdx + 1} of ${state.qLimit}</span>
+                        </div>
+                        <div class="relative w-12 h-12 flex items-center justify-center">
+                            <svg class="absolute inset-0 w-full h-full -rotate-90">
+                                <circle cx="24" cy="24" r="20" stroke="#222" stroke-width="4" fill="none" />
+                                <circle id="timer-ring" cx="24" cy="24" r="20" stroke="#0ea5e9" stroke-width="4" fill="none" stroke-dasharray="126" stroke-dashoffset="${126 - (state.timer/20)*126}" class="timer-circle" />
+                            </svg>
+                            <span class="text-sm font-bold">${state.timer}</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-card p-12 mb-8 text-center">
+                        <h2 class="text-4xl font-bold leading-tight">${q.q}</h2>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        ${q.a.map((opt, i) => {
+                            const labels = ['A', 'B', 'C', 'D'];
+                            const colors = ['#ef4444', '#3b82f6', '#eab308', '#22c55e'];
+                            return `
+                                <button onclick="select('${opt}')" class="answer-card p-6 flex items-center gap-4 text-left font-bold text-xl ${state.isRevealed ? (opt === q.c ? 'ring-4 ring-white' : 'opacity-20') : ''}" style="background:${colors[i]}">
+                                    <span class="bg-black/20 w-8 h-8 flex items-center justify-center rounded-full text-sm">${labels[i]}</span>
+                                    ${opt}
+                                </button>`;
+                        }).join('')}
+                    </div>
+
+                    ${state.isRevealed ? `
+                        <div class="mt-8 text-center animate-bounce">
+                            <div class="text-blue-400 font-bold">Next question in ${state.revealTimer}...</div>
+                        </div>
+                    ` : `
+                        <div class="mt-8 flex justify-center">
+                            <button onclick="reveal()" class="py-2 px-8 bg-zinc-800 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-zinc-700">Reveal Answer</button>
+                        </div>
+                    `}
                 `;
-            } else if (state.step === 'playing') {
-                const item = quizData[state.qIndex];
-                container.innerHTML = `
-                    <div class="absolute top-0 left-0 w-full h-1 bg-zinc-800 rounded-t-2xl">
-                        <div id="timer-bar" class="timer-fill" style="width: 100%"></div>
-                    </div>
-                    <div class="flex justify-between mb-6 mt-2 text-xs font-bold uppercase tracking-widest">
-                        <span class="text-blue-500">${item.cat}</span>
-                        <span class="text-zinc-500">Score: ${state.score}</span>
-                    </div>
-                    <h2 class="text-2xl font-bold mb-8 leading-tight">${item.q}</h2>
-                    <div class="grid gap-3">
-                        ${item.a.map(opt => `<button onclick="submit('${opt}')" class="option-btn p-5 rounded-2xl text-left font-medium">${opt}</button>`).join('')}
-                    </div>
-                `;
-                runTimer();
             } else {
-                container.innerHTML = `
-                    <div class="text-center">
-                        <h2 class="text-zinc-500 uppercase text-sm font-bold mb-2">Final Score</h2>
-                        <div class="text-7xl font-black mb-10">${state.score}</div>
-                        <button onclick="location.reload()" class="w-full py-5 bg-white text-black font-bold rounded-2xl">PLAY AGAIN</button>
-                    </div>
-                `;
+                ui.innerHTML = `
+                    <div class="bg-card p-10 text-center">
+                        <h1 class="text-5xl font-black mb-4">GAME OVER</h1>
+                        <p class="text-2xl text-zinc-400 mb-10">Total Score: ${state.score}</p>
+                        <div class="grid grid-cols-2 gap-4">
+                            <button onclick="state.currentIdx=0;state.score=0;state.step='play';render();" class="py-4 bg-blue-600 rounded-xl font-bold">REMATCH</button>
+                            <button onclick="location.reload()" class="py-4 bg-zinc-800 rounded-xl font-bold">QUIT</button>
+                        </div>
+                    </div>`;
             }
         }
 
-        function start() {
-            state.step = 'playing';
+        function setup(num) {
+            state.qLimit = num;
+            state.step = 'play';
             render();
         }
 
-        function submit(ans) {
-            if (ans === quizData[state.qIndex].c) state.score += 10;
-            next();
-        }
-
-        function next() {
-            clearInterval(window.itv);
-            state.qIndex++;
-            if (state.qIndex >= quizData.length) {
-                state.step = 'end';
+        function select(ans) {
+            if (state.isRevealed) return;
+            if (ans === baseQuestions[state.currentIdx % baseQuestions.length].c) {
+                state.score += 10;
+                // Fastest finger bonus simulation
+                if (state.timer > 15) state.score += 5; 
             }
-            render();
+            reveal();
         }
 
-        function runTimer() {
-            clearInterval(window.itv);
-            state.timer = 10;
-            window.itv = setInterval(() => {
-                state.timer--;
-                const bar = document.getElementById('timer-bar');
-                if (bar) bar.style.width = (state.timer / 10) * 100 + "%";
-                
-                if (state.timer <= 0) next();
+        function reveal() {
+            if (state.isRevealed) return;
+            state.isRevealed = true;
+            state.revealTimer = 5;
+            render();
+            
+            const revInt = setInterval(() => {
+                state.revealTimer--;
+                render();
+                if (state.revealTimer <= 0) {
+                    clearInterval(revInt);
+                    state.currentIdx++;
+                    state.isRevealed = false;
+                    state.timer = 20;
+                    if (state.currentIdx >= state.qLimit) state.step = 'end';
+                    render();
+                }
             }, 1000);
         }
+
+        // Main Timer
+        setInterval(() => {
+            if (state.step === 'play' && !state.isRevealed) {
+                state.timer--;
+                render();
+                if (state.timer <= 0) reveal();
+            }
+        }, 1000);
 
         render();
     </script>
