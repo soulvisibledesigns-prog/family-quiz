@@ -3,63 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Family Quiz Party</title>
+    <title>General Knowledge Sync</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background: #000; color: #fff; font-family: -apple-system, sans-serif; }
-        .ios-blur { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); }
-        .btn-tap:active { transform: scale(0.95); background: #007AFF; }
+        body { background: #0a0a0c; color: #fff; font-family: -apple-system, sans-serif; overflow: hidden; }
+        .ios-card { background: #1c1c1e; border: 1px solid #2c2c2e; border-radius: 24px; }
+        .timer-fill { height: 100%; background: #30d158; transition: width 1s linear; }
+        .option-btn { background: #2c2c2e; transition: transform 0.1s; }
+        .option-btn:active { transform: scale(0.96); background: #0a84ff; }
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
 
-    <div id="app" class="w-full max-w-sm ios-blur p-8 rounded-[30px] shadow-2xl text-center">
+    <div id="game-container" class="w-full max-w-lg ios-card p-8 shadow-2xl relative">
         </div>
 
     <script>
-        // YOUR CUSTOM DATA
-        const quiz = [
-            { q: "Which 90s London Garage legend is part of the 'Dream Team'?", a: ["DJ Luck", "DJ Slimzee", "Mike Ruffcut Lloyd", "Scott Garcia"], c: "Mike Ruffcut Lloyd" },
-            { q: "In Marvel's X-Men, who is known as 'Logan'?", a: ["Cyclops", "Beast", "Wolverine", "Gambit"], c: "Wolverine" },
-            { q: "Which Stephen King book features a plague called 'Captain Trips'?", a: ["It", "The Stand", "Cujo", "Misery"], c: "The Stand" },
-            { q: "Which artist sang 'Sexual Healing'?", a: ["Teddy Pendergrass", "Marvin Gaye", "Bill Withers", "Michael Jackson"], c: "Marvin Gaye" }
+        const quizData = [
+            { q: "Which planet is known as the 'Red Planet'?", a: ["Venus", "Mars", "Jupiter", "Saturn"], c: "Mars", cat: "Science" },
+            { q: "Who painted the 'Mona Lisa'?", a: ["Van Gogh", "Picasso", "Da Vinci", "Monet"], c: "Da Vinci", cat: "Art" },
+            { q: "What is the capital city of Japan?", a: ["Seoul", "Beijing", "Bangkok", "Tokyo"], c: "Tokyo", cat: "Geography" },
+            { q: "Which ocean is the largest on Earth?", a: ["Atlantic", "Indian", "Arctic", "Pacific"], c: "Pacific", cat: "Science" },
+            { q: "What year did World War II end?", a: ["1941", "1945", "1950", "1939"], c: "1945", cat: "History" }
         ];
 
-        let state = { step: 'start', score: 0, currentQ: 0 };
+        let state = {
+            step: 'lobby',
+            qIndex: 0,
+            score: 0,
+            timer: 10
+        };
 
         function render() {
-            const app = document.getElementById('app');
-            if (state.step === 'start') {
-                app.innerHTML = `
-                    <h1 class="text-3xl font-black mb-2 uppercase tracking-tighter">Quiz Party</h1>
-                    <p class="text-zinc-500 mb-8">Ready to play with the boys?</p>
-                    <button onclick="start()" class="w-full py-4 bg-white text-black rounded-2xl font-bold btn-tap">START GAME</button>
+            const container = document.getElementById('game-container');
+            
+            if (state.step === 'lobby') {
+                container.innerHTML = `
+                    <h1 class="text-3xl font-black text-center mb-2">QUIZ PARTY</h1>
+                    <p class="text-zinc-500 text-center mb-8">General Knowledge Edition</p>
+                    <button onclick="start()" class="w-full py-5 bg-blue-600 rounded-2xl font-bold text-lg">START GAME</button>
                 `;
-            } else if (state.step === 'play') {
-                const q = quiz[state.currentQ];
-                app.innerHTML = `
-                    <div class="mb-4 text-xs font-bold text-zinc-500">QUESTION ${state.currentQ + 1}/${quiz.length}</div>
-                    <h2 class="text-xl font-bold mb-8">${q.q}</h2>
-                    <div class="space-y-3">
-                        ${q.a.map(opt => `<button onclick="check('${opt}')" class="w-full p-4 rounded-2xl bg-zinc-900 border border-zinc-800 text-left btn-tap">${opt}</button>`).join('')}
+            } else if (state.step === 'playing') {
+                const item = quizData[state.qIndex];
+                container.innerHTML = `
+                    <div class="absolute top-0 left-0 w-full h-1 bg-zinc-800 rounded-t-2xl">
+                        <div id="timer-bar" class="timer-fill" style="width: 100%"></div>
+                    </div>
+                    <div class="flex justify-between mb-6 mt-2 text-xs font-bold uppercase tracking-widest">
+                        <span class="text-blue-500">${item.cat}</span>
+                        <span class="text-zinc-500">Score: ${state.score}</span>
+                    </div>
+                    <h2 class="text-2xl font-bold mb-8 leading-tight">${item.q}</h2>
+                    <div class="grid gap-3">
+                        ${item.a.map(opt => `<button onclick="submit('${opt}')" class="option-btn p-5 rounded-2xl text-left font-medium">${opt}</button>`).join('')}
                     </div>
                 `;
+                runTimer();
             } else {
-                app.innerHTML = `
-                    <h1 class="text-4xl font-black mb-2">FINISHED!</h1>
-                    <p class="text-2xl mb-8">${state.score} / ${quiz.length}</p>
-                    <button onclick="location.reload()" class="w-full py-4 bg-blue-600 rounded-2xl font-bold">REPLAY</button>
+                container.innerHTML = `
+                    <div class="text-center">
+                        <h2 class="text-zinc-500 uppercase text-sm font-bold mb-2">Final Score</h2>
+                        <div class="text-7xl font-black mb-10">${state.score}</div>
+                        <button onclick="location.reload()" class="w-full py-5 bg-white text-black font-bold rounded-2xl">PLAY AGAIN</button>
+                    </div>
                 `;
             }
         }
 
-        window.start = () => { state.step = 'play'; render(); };
-        window.check = (ans) => {
-            if (ans === quiz[state.currentQ].c) state.score++;
-            state.currentQ++;
-            if (state.currentQ >= quiz.length) state.step = 'end';
+        function start() {
+            state.step = 'playing';
             render();
-        };
+        }
+
+        function submit(ans) {
+            if (ans === quizData[state.qIndex].c) state.score += 10;
+            next();
+        }
+
+        function next() {
+            clearInterval(window.itv);
+            state.qIndex++;
+            if (state.qIndex >= quizData.length) {
+                state.step = 'end';
+            }
+            render();
+        }
+
+        function runTimer() {
+            clearInterval(window.itv);
+            state.timer = 10;
+            window.itv = setInterval(() => {
+                state.timer--;
+                const bar = document.getElementById('timer-bar');
+                if (bar) bar.style.width = (state.timer / 10) * 100 + "%";
+                
+                if (state.timer <= 0) next();
+            }, 1000);
+        }
 
         render();
     </script>
