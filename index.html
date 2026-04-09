@@ -3,21 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Endless Quiz Party</title>
+    <title>Family Quiz Party</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
-        .answer-card { border-radius: 12px; transition: all 0.2s; border: 1px solid rgba(255,255,255,0.1); }
-        .answer-card:active { transform: scale(0.98); opacity: 0.8; }
-        .bg-card { background: #111; border: 1px solid #222; border-radius: 20px; }
+        body { background: #050505; color: #fff; font-family: sans-serif; overflow: hidden; }
+        .bg-card { background: #111; border: 1px solid #222; border-radius: 24px; }
+        .answer-card { border-radius: 16px; transition: all 0.2s; border: 1px solid rgba(255,255,255,0.05); }
+        .answer-card:active { transform: scale(0.97); }
         .badge { padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: bold; text-transform: uppercase; background: #7c3aed; }
-        .timer-circle { transition: stroke-dashoffset 1s linear; }
+        .timer-ring { transition: stroke-dashoffset 1s linear; stroke: #0ea5e9; }
+        .fast-glow { color: #fbbf24; text-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
     </style>
 </head>
 <body class="flex flex-col items-center justify-center min-h-screen p-4">
 
-    <div id="game-ui" class="w-full max-w-4xl relative">
-        <div class="text-center">Loading the Arena...</div>
+    <div id="game-ui" class="w-full max-w-4xl">
+        <div class="text-center font-bold animate-pulse">BOOTING UP...</div>
     </div>
 
     <script>
@@ -29,7 +30,7 @@
             timer: 20,
             revealTimer: 5,
             isRevealed: false,
-            qLimit: 10,
+            wasFast: false,
             isLoading: false
         };
 
@@ -37,8 +38,9 @@
             state.isLoading = true;
             render();
             try {
-                // Pulls from Open Trivia DB - Free & Endless
-                const response = await fetch(`https://opentdb.com/api.php?amount=${amount}&type=multiple`);
+                // Filtered for 'Easy' and 'Medium' to fit 10-18 age range
+                const diff = amount === 50 ? "" : "&difficulty=easy"; 
+                const response = await fetch(`https://opentdb.com/api.php?amount=${amount}${diff}&type=multiple`);
                 const data = await response.json();
                 state.questions = data.results.map(q => ({
                     q: decodeHTML(q.question),
@@ -47,86 +49,69 @@
                     cat: q.category.toUpperCase()
                 }));
                 state.step = 'play';
-            } catch (error) {
-                alert("Failed to load questions. Check your internet!");
-            }
+            } catch (e) { alert("Error fetching questions!"); }
             state.isLoading = false;
             render();
         }
 
-        function decodeHTML(html) {
-            const txt = document.createElement("textarea");
-            txt.innerHTML = html;
-            return txt.value;
-        }
-
-        function shuffle(array) {
-            return array.sort(() => Math.random() - 0.5);
-        }
+        function decodeHTML(h) { const t = document.createElement("textarea"); t.innerHTML = h; return t.value; }
+        function shuffle(arr) { return arr.sort(() => Math.random() - 0.5); }
 
         function render() {
             const ui = document.getElementById('game-ui');
-            
-            if (state.isLoading) {
-                ui.innerHTML = `<div class="text-center animate-pulse text-2xl font-bold">GENERATING QUESTIONS...</div>`;
-                return;
-            }
+            if (state.isLoading) { ui.innerHTML = `<div class="text-center text-2xl font-black italic">PREPARING ARENA...</div>`; return; }
 
             if (state.step === 'start') {
                 ui.innerHTML = `
-                    <div class="bg-card p-10 text-center">
-                        <h1 class="text-4xl font-black mb-8 italic">QUIZ PARTY</h1>
-                        <p class="mb-6 text-zinc-400">Select Question Count:</p>
+                    <div class="bg-card p-12 text-center shadow-2xl">
+                        <h1 class="text-5xl font-black mb-4 tracking-tighter italic">QUIZ PARTY</h1>
+                        <p class="text-zinc-500 mb-10 font-medium">AGES 10-18 • GENERAL KNOWLEDGE</p>
                         <div class="grid grid-cols-3 gap-4 mb-8">
-                            <button onclick="fetchQuestions(10)" class="p-4 bg-zinc-800 rounded-xl hover:bg-blue-600 font-bold">10</button>
-                            <button onclick="fetchQuestions(20)" class="p-4 bg-zinc-800 rounded-xl hover:bg-blue-600 font-bold">20</button>
-                            <button onclick="fetchQuestions(50)" class="p-4 bg-zinc-800 rounded-xl hover:bg-blue-600 font-bold">50</button>
+                            ${[10, 20, 50].map(n => `<button onclick="fetchQuestions(${n})" class="p-6 bg-zinc-800 rounded-2xl font-bold text-xl hover:bg-blue-600 transition">${n}</button>`).join('')}
                         </div>
                     </div>`;
             } else if (state.step === 'play') {
                 const q = state.questions[state.currentIdx];
                 ui.innerHTML = `
-                    <div class="flex justify-between items-center mb-6">
+                    <div class="flex justify-between items-center mb-8">
                         <div class="flex items-center gap-4">
                             <span class="badge">${q.cat}</span>
-                            <span class="text-zinc-500 text-sm">Question ${state.currentIdx + 1} of ${state.questions.length}</span>
+                            <span class="text-zinc-500 font-bold text-sm">Q ${state.currentIdx + 1}/${state.questions.length}</span>
                         </div>
-                        <div class="relative w-12 h-12 flex items-center justify-center">
+                        <div class="relative w-14 h-14 flex items-center justify-center">
                             <svg class="absolute inset-0 w-full h-full -rotate-90">
-                                <circle cx="24" cy="24" r="20" stroke="#222" stroke-width="4" fill="none" />
-                                <circle id="timer-ring" cx="24" cy="24" r="20" stroke="#0ea5e9" stroke-width="4" fill="none" stroke-dasharray="126" stroke-dashoffset="${126 - (state.timer/20)*126}" class="timer-circle" />
+                                <circle cx="28" cy="28" r="24" stroke="#222" stroke-width="5" fill="none" />
+                                <circle cx="28" cy="28" r="24" stroke-width="5" fill="none" stroke-dasharray="151" stroke-dashoffset="${151 - (state.timer/20)*151}" class="timer-ring" />
                             </svg>
-                            <span class="text-sm font-bold">${state.timer}</span>
+                            <span class="text-lg font-black">${state.timer}</span>
                         </div>
                     </div>
 
-                    <div class="bg-card p-12 mb-8 text-center min-h-[200px] flex items-center justify-center">
-                        <h2 class="text-3xl font-bold leading-tight">${q.q}</h2>
+                    <div class="bg-card p-12 mb-8 text-center min-h-[220px] flex flex-col justify-center shadow-inner">
+                        <h2 class="text-4xl font-bold leading-snug">${q.q}</h2>
+                        ${state.wasFast ? `<div class="mt-4 fast-glow font-black italic uppercase tracking-widest text-sm">⚡ Fastest Answer Bonus!</div>` : ''}
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
                         ${q.a.map((opt, i) => {
-                            const colors = ['#ef4444', '#3b82f6', '#eab308', '#22c55e'];
+                            const colors = ['#ef4444', '#3b82f6', '#f59e0b', '#10b981'];
                             const isCorrect = opt === q.c;
-                            return `
-                                <button onclick="select('${opt}')" class="answer-card p-6 text-left font-bold text-xl ${state.isRevealed ? (isCorrect ? 'ring-4 ring-white' : 'opacity-20') : ''}" style="background:${colors[i]}">
-                                    ${opt}
-                                </button>`;
+                            const dim = state.isRevealed && !isCorrect ? 'opacity-20 scale-95' : '';
+                            const ring = state.isRevealed && isCorrect ? 'ring-4 ring-white' : '';
+                            return `<button onclick="select('${opt}')" class="answer-card p-7 text-left font-bold text-2xl shadow-lg ${dim} ${ring}" style="background:${colors[i]}">${opt}</button>`;
                         }).join('')}
                     </div>
 
-                    ${state.isRevealed ? `
-                        <div class="mt-8 text-center"><div class="text-blue-400 font-bold">Next Question in ${state.revealTimer}...</div></div>
-                    ` : ''}
+                    ${state.isRevealed ? `<div class="mt-10 text-center text-blue-400 font-black animate-pulse uppercase tracking-widest">Next Round in ${state.revealTimer}...</div>` : ''}
                 `;
             } else {
                 ui.innerHTML = `
-                    <div class="bg-card p-10 text-center">
-                        <h1 class="text-5xl font-black mb-4">GAME OVER</h1>
-                        <p class="text-2xl text-zinc-400 mb-10">Total Score: ${state.score}</p>
-                        <div class="grid grid-cols-2 gap-4">
-                            <button onclick="fetchQuestions(state.questions.length)" class="py-4 bg-blue-600 rounded-xl font-bold">REMATCH</button>
-                            <button onclick="location.reload()" class="py-4 bg-zinc-800 rounded-xl font-bold">QUIT</button>
+                    <div class="bg-card p-12 text-center">
+                        <h1 class="text-6xl font-black mb-4 italic">FINAL SCORE</h1>
+                        <div class="text-8xl font-black text-blue-500 mb-12">${state.score}</div>
+                        <div class="grid grid-cols-2 gap-6">
+                            <button onclick="state.currentIdx=0;state.score=0;state.step='start';render();" class="py-5 bg-blue-600 rounded-2xl font-bold text-xl shadow-lg">REMATCH</button>
+                            <button onclick="location.reload()" class="py-5 bg-zinc-800 rounded-2xl font-bold text-xl shadow-lg">QUIT</button>
                         </div>
                     </div>`;
             }
@@ -136,39 +121,24 @@
             if (state.isRevealed) return;
             if (ans === state.questions[state.currentIdx].c) {
                 state.score += 10;
-                if (state.timer > 15) state.score += 5; // Fast bonus
+                if (state.timer > 15) { state.score += 5; state.wasFast = true; }
             }
             reveal();
         }
 
         function reveal() {
-            if (state.isRevealed) return;
-            state.isRevealed = true;
-            state.revealTimer = 5;
-            render();
-            
-            const revInt = setInterval(() => {
-                state.revealTimer--;
-                render();
+            state.isRevealed = true; state.revealTimer = 5; render();
+            const rInt = setInterval(() => {
+                state.revealTimer--; render();
                 if (state.revealTimer <= 0) {
-                    clearInterval(revInt);
-                    state.currentIdx++;
-                    state.isRevealed = false;
-                    state.timer = 20;
+                    clearInterval(rInt); state.currentIdx++; state.isRevealed = false; state.wasFast = false; state.timer = 20;
                     if (state.currentIdx >= state.questions.length) state.step = 'end';
                     render();
                 }
             }, 1000);
         }
 
-        setInterval(() => {
-            if (state.step === 'play' && !state.isRevealed) {
-                state.timer--;
-                render();
-                if (state.timer <= 0) reveal();
-            }
-        }, 1000);
-
+        setInterval(() => { if (state.step === 'play' && !state.isRevealed) { state.timer--; render(); if (state.timer <= 0) reveal(); } }, 1000);
         render();
     </script>
 </body>
