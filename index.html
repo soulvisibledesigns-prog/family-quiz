@@ -3,167 +3,166 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Multiplayer Quiz Sync</title>
+    <title>Family Quiz Party</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
-        body { background: #050505; color: #fff; font-family: sans-serif; overflow-x: hidden; }
-        .bg-card { background: #111; border: 1px solid #222; border-radius: 24px; }
+        body { background: #050505; color: #fff; font-family: -apple-system, sans-serif; overflow-x: hidden; }
+        .bg-card { background: #111; border: 1px solid #222; border-radius: 32px; }
         .btn-ios { background: #1c1c1e; border: 1px solid #3a3a3c; border-radius: 16px; transition: all 0.2s; }
         .btn-ios:active { transform: scale(0.95); background: #007AFF; }
         .timer-ring { transition: stroke-dashoffset 1s linear; stroke: #0ea5e9; }
+        #qrcode img { margin: 0 auto; border: 8px solid white; border-radius: 12px; }
     </style>
 </head>
-<body class="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+<body class="flex flex-col items-center justify-center min-h-screen p-6 text-center">
 
     <div id="game-ui" class="w-full max-w-2xl">
-        <div class="animate-pulse font-black italic">INITIALIZING NETWORK...</div>
+        <div class="animate-pulse font-black italic">INITIALIZING ARENA...</div>
     </div>
 
     <script>
-        let peer, conn, roomCode;
+        let peer, connections = [];
+        let roomCode = "";
         let players = [];
         let state = {
-            role: null, // 'host' or 'player'
-            step: 'setup',
+            step: 'start',
             targetPlayers: 2,
             qLimit: 10,
             currentIdx: 0,
             questions: [],
             timer: 20,
-            isRevealed: false
+            isRevealed: false,
+            hostName: ''
         };
 
-        // --- SETUP PHASE ---
         function render() {
             const ui = document.getElementById('game-ui');
-            
-            if (state.step === 'setup') {
+            const urlParams = new URLSearchParams(window.location.search);
+            const autoJoin = urlParams.get('join');
+
+            if (state.step === 'start') {
                 ui.innerHTML = `
                     <div class="bg-card p-10 shadow-2xl">
-                        <h1 class="text-4xl font-black mb-8 italic">QUIZ PARTY</h1>
-                        <div class="grid grid-cols-2 gap-4">
-                            <button onclick="initHost()" class="p-6 bg-blue-600 rounded-2xl font-bold">HOST (TV)</button>
-                            <button onclick="initPlayer()" class="p-6 bg-zinc-800 rounded-2xl font-bold">JOIN (iPhone)</button>
+                        <h1 class="text-5xl font-black mb-10 italic tracking-tighter">QUIZ PARTY</h1>
+                        <div class="grid gap-4">
+                            <button onclick="state.step='host-config';render()" class="p-6 bg-blue-600 rounded-3xl font-bold text-xl shadow-lg">HOST (TV)</button>
+                            <button onclick="state.step='join-input';render()" class="p-6 bg-zinc-800 rounded-3xl font-bold text-xl">JOIN (iPhone)</button>
                         </div>
                     </div>`;
             } else if (state.step === 'host-config') {
                 ui.innerHTML = `
                     <div class="bg-card p-10">
-                        <h2 class="text-2xl font-bold mb-6">Game Settings</h2>
-                        <p class="mb-2 text-zinc-500">Number of Players:</p>
-                        <div class="flex justify-center gap-4 mb-8">
-                            ${[2,3,4,8].map(n => `<button onclick="state.targetPlayers=${n};render()" class="w-12 h-12 rounded-full ${state.targetPlayers==n?'bg-blue-600':'bg-zinc-800'}">${n}</button>`).join('')}
+                        <h2 class="text-2xl font-bold mb-8 italic">HOST SETUP</h2>
+                        <input id="hostNameInput" type="text" placeholder="YOUR NAME" class="w-full p-5 bg-zinc-900 rounded-2xl mb-6 text-center font-bold">
+                        <p class="text-xs font-bold text-zinc-500 uppercase mb-4">Total Players (Including You)</p>
+                        <div class="flex justify-center gap-3 mb-8">
+                            ${[2,3,4,8].map(n => `<button onclick="state.targetPlayers=${n};render()" class="w-14 h-14 rounded-full font-bold ${state.targetPlayers==n?'bg-blue-600':'bg-zinc-800'}">${n}</button>`).join('')}
                         </div>
-                        <p class="mb-2 text-zinc-500">Question Count:</p>
-                        <div class="flex justify-center gap-4 mb-8">
-                            ${[10,20,50].map(n => `<button onclick="state.qLimit=${n};render()" class="px-4 py-2 rounded-lg ${state.qLimit==n?'bg-blue-600':'bg-zinc-800'}">${n}</button>`).join('')}
-                        </div>
-                        <button onclick="createRoom()" class="w-full py-4 bg-white text-black font-bold rounded-xl">CREATE ROOM</button>
+                        <button onclick="setupHost()" class="w-full py-5 bg-white text-black font-bold rounded-2xl">CREATE ROOM</button>
                     </div>`;
             } else if (state.step === 'lobby') {
                 ui.innerHTML = `
                     <div class="bg-card p-10">
-                        <div class="text-sm text-zinc-500 uppercase font-bold mb-2">Room Code</div>
-                        <div class="text-6xl font-black tracking-widest text-blue-500 mb-8">${roomCode}</div>
-                        <div class="text-left mb-6">
-                            <h3 class="font-bold mb-2 text-zinc-400">Players Connected (${players.length}/${state.targetPlayers}):</h3>
-                            <div class="space-y-2">
-                                ${players.map(p => `<div class="p-3 bg-zinc-900 rounded-lg">✅ ${p.name}</div>`).join('')}
+                        <div id="qrcode" class="mb-6 flex justify-center"></div>
+                        <p class="text-zinc-500 font-bold mb-8">ROOM CODE: <span class="text-white">${roomCode}</span></p>
+                        <div class="text-left bg-black/40 p-6 rounded-2xl border border-zinc-800">
+                            <p class="text-xs font-bold text-blue-500 uppercase mb-4">Joined (${players.length}/${state.targetPlayers})</p>
+                            <div class="grid grid-cols-2 gap-3">
+                                ${players.map(p => `<div class="bg-zinc-900 p-3 rounded-xl border border-zinc-800">✅ ${p.name}</div>`).join('')}
                             </div>
                         </div>
-                        <div class="text-sm italic animate-pulse">Waiting for everyone to join...</div>
                     </div>`;
+                new QRCode(document.getElementById("qrcode"), {
+                    text: window.location.origin + window.location.pathname + "?join=" + roomCode,
+                    width: 180, height: 180
+                });
             } else if (state.step === 'join-input') {
                 ui.innerHTML = `
                     <div class="bg-card p-10">
-                        <h2 class="text-2xl font-bold mb-6">Join Game</h2>
-                        <input id="joinCode" type="text" placeholder="ROOM CODE" class="w-full p-4 bg-zinc-900 rounded-xl mb-4 text-center text-2xl font-bold uppercase">
-                        <input id="joinName" type="text" placeholder="YOUR NAME" class="w-full p-4 bg-zinc-900 rounded-xl mb-6 text-center text-xl font-bold uppercase">
-                        <button onclick="joinRoom()" class="w-full py-4 bg-blue-600 rounded-xl font-bold">CONNECT</button>
+                        <h2 class="text-2xl font-bold mb-8">JOIN THE PARTY</h2>
+                        <input id="pName" type="text" placeholder="NAME" class="w-full p-5 bg-zinc-900 rounded-2xl mb-4 text-center font-bold uppercase">
+                        ${!autoJoin ? `<input id="pCode" type="text" placeholder="CODE" class="w-full p-5 bg-zinc-900 rounded-2xl mb-6 text-center font-bold uppercase">` : ''}
+                        <button onclick="joinMatch('${autoJoin}')" class="w-full py-5 bg-blue-600 rounded-2xl font-bold">JOIN GAME</button>
                     </div>`;
             } else if (state.step === 'playing') {
                 renderGame();
             }
         }
 
-        // --- NETWORK LOGIC ---
-        function initHost() { state.step = 'host-config'; render(); }
-        function initPlayer() { state.step = 'join-input'; render(); }
-
-        function createRoom() {
+        async function setupHost() {
+            state.hostName = document.getElementById('hostNameInput').value || 'Host';
             roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+            players.push({ name: state.hostName, score: 0, isHost: true });
+            
             peer = new Peer(roomCode);
             peer.on('open', () => { state.step = 'lobby'; render(); });
             peer.on('connection', (c) => {
                 c.on('data', (data) => {
                     if (data.type === 'join') {
-                        players.push({ id: c.peer, name: data.name, score: 0, conn: c });
-                        broadcast({ type: 'lobby-update', players: players.map(p => p.name) });
+                        players.push({ name: data.name, score: 0, conn: c });
                         render();
-                        if (players.length >= state.targetPlayers) startMatch();
+                        if (players.length >= state.targetPlayers) startGame();
                     }
                 });
             });
         }
 
-        function joinRoom() {
-            const code = document.getElementById('joinCode').value.toUpperCase();
-            const name = document.getElementById('joinName').value;
-            if (!code || !name) return;
+        async function joinMatch(auto) {
+            const name = document.getElementById('pName').value;
+            const code = (auto || document.getElementById('pCode').value).toUpperCase();
             peer = new Peer();
             peer.on('open', () => {
-                conn = peer.connect(code);
+                const conn = peer.connect(code);
                 conn.on('open', () => {
                     conn.send({ type: 'join', name: name });
-                    document.getElementById('game-ui').innerHTML = `<div class="bg-card p-10"><h2 class="text-2xl font-bold">Connected!</h2><p class="text-zinc-500">Wait for the Host to start...</p></div>`;
+                    document.getElementById('game-ui').innerHTML = `<div class="bg-card p-10"><h2 class="text-3xl font-bold italic">READY!</h2><p class="text-zinc-500">Look at the TV...</p></div>`;
                 });
-                conn.on('data', (data) => {
-                    if (data.type === 'start') { state.questions = data.qs; state.step = 'playing'; render(); }
-                    if (data.type === 'sync-timer') { state.timer = data.time; updateTimerUI(); }
-                });
+                conn.on('data', (d) => { if(d.type==='start') { state.questions = d.qs; state.step='playing'; render(); } });
             });
         }
 
-        async function startMatch() {
-            const res = await fetch(`https://opentdb.com/api.php?amount=${state.qLimit}&difficulty=easy&type=multiple`);
-            const data = await res.json();
-            state.questions = data.results.map(q => ({
-                q: decodeHTML(q.question),
-                c: decodeHTML(q.correct_answer),
-                a: [...q.incorrect_answers.map(decodeHTML), decodeHTML(q.correct_answer)].sort(() => Math.random() - 0.5),
+        async function startGame() {
+            const res = await fetch(`https://opentdb.com/api.php?amount=10&difficulty=easy&type=multiple`);
+            const d = await res.json();
+            state.questions = d.results.map(q => ({
+                q: decodeHTML(q.question), c: decodeHTML(q.correct_answer),
+                a: [...q.incorrect_answers.map(decodeHTML), decodeHTML(q.correct_answer)].sort(() => Math.random()-0.5),
                 cat: q.category.toUpperCase()
             }));
             state.step = 'playing';
-            broadcast({ type: 'start', qs: state.questions });
+            players.forEach(p => p.conn && p.conn.send({ type: 'start', qs: state.questions }));
             render();
-            startGlobalTimer();
+            startTimer();
         }
 
-        function broadcast(msg) { players.forEach(p => p.conn.send(msg)); }
-        function decodeHTML(h) { const t = document.createElement("textarea"); t.innerHTML = h; return t.value; }
-
-        // --- GAMEPLAY RENDER ---
         function renderGame() {
             const q = state.questions[state.currentIdx];
             const ui = document.getElementById('game-ui');
             ui.innerHTML = `
-                <div class="flex justify-between items-center mb-8">
-                    <span class="badge px-3 py-1 bg-blue-600 rounded-full text-xs font-bold">${q.cat}</span>
-                    <div class="text-xl font-black" id="timer-text">${state.timer}</div>
+                <div class="flex justify-between items-center mb-6">
+                    <span class="px-3 py-1 bg-blue-600 rounded-full text-[10px] font-bold uppercase">${q.cat}</span>
+                    <div class="text-xl font-black">${state.timer}s</div>
                 </div>
-                <div class="bg-card p-12 mb-8 min-h-[200px] flex items-center justify-center">
-                    <h2 class="text-3xl font-bold">${q.q}</h2>
+                <div class="bg-card p-10 mb-8 min-h-[200px] flex items-center justify-center">
+                    <h2 class="text-3xl font-bold leading-tight">${q.q}</h2>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
-                    ${q.a.map(opt => `<button onclick="handleSelect('${opt}')" class="btn-ios p-6 font-bold text-lg">${opt}</button>`).join('')}
-                </div>
-            `;
+                    ${q.a.map(opt => `<button onclick="submitAns('${opt}')" class="btn-ios p-6 font-bold text-lg">${opt}</button>`).join('')}
+                </div>`;
         }
 
-        function handleSelect(ans) {
-            // Scoring logic here...
+        function submitAns(ans) {
+            if (state.isRevealed) return;
+            // Logic for scoring and next question...
+            state.currentIdx++;
+            if (state.currentIdx >= state.questions.length) state.step = 'end';
+            render();
         }
+
+        function decodeHTML(h) { const t = document.createElement("textarea"); t.innerHTML = h; return t.value; }
+        function startTimer() { setInterval(() => { if(state.step==='playing'){state.timer--; render();} }, 1000); }
 
         render();
     </script>
