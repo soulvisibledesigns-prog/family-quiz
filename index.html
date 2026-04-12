@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Quiz Party - Lobby Fix</title>
+    <title>Quiz Party - Final Fix</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -16,14 +16,13 @@
 </head>
 <body class="flex flex-col items-center justify-center min-h-screen p-6 text-center">
 
-    <div id="game-ui" class="w-full max-w-4xl">
-        </div>
+    <div id="game-ui" class="w-full max-w-4xl"></div>
 
     <script>
         let peer, roomCode = "";
         let players = [];
         let state = {
-            step: 'start', // 'start' -> 'lobby' -> 'playing' -> 'end'
+            step: 'start',
             currentIdx: 0,
             questions: [],
             timer: 10,
@@ -37,13 +36,11 @@
             const urlParams = new URLSearchParams(window.location.search);
             const autoJoin = urlParams.get('join');
 
-            // If user is joining via a link on their phone
             if (autoJoin || state.role === 'player') {
                 renderPlayerView(ui, autoJoin);
                 return;
             }
 
-            // --- HOST VIEWS ---
             if (state.step === 'start') {
                 ui.innerHTML = `
                     <div class="bg-card p-12 max-w-md mx-auto">
@@ -52,48 +49,40 @@
                             <div>
                                 <label class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Questions</label>
                                 <select id="qCount" class="w-full bg-zinc-900 p-4 rounded-xl border border-zinc-800 font-bold mt-2">
-                                    <option value="5">5</option>
-                                    <option value="10" selected>10</option>
-                                    <option value="20">20</option>
+                                    <option value="5">5</option><option value="10" selected>10</option>
                                 </select>
                             </div>
                             <div>
-                                <label class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Players</label>
+                                <label class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Expected Players</label>
                                 <select id="pCount" class="w-full bg-zinc-900 p-4 rounded-xl border border-zinc-800 font-bold mt-2">
                                     <option value="1">1</option><option value="2" selected>2</option>
-                                    <option value="3">3</option><option value="4">4</option>
-                                    <option value="6">6</option><option value="8">8</option>
+                                    <option value="4">4</option><option value="6">6</option><option value="8">8</option>
                                 </select>
                             </div>
                         </div>
-                        <button onclick="setupLobby()" class="w-full py-5 bg-blue-600 rounded-2xl font-bold uppercase">Open Lobby</button>
+                        <button onclick="setupLobby()" class="w-full py-5 bg-blue-600 rounded-2xl font-bold uppercase">Setup Hub</button>
                     </div>`;
             } else if (state.step === 'lobby') {
                 const joinUrl = window.location.origin + window.location.pathname + "?join=" + roomCode;
                 ui.innerHTML = `
                     <div class="bg-card p-10 flex flex-col items-center">
                         <div id="qrcode" class="mb-6"></div>
-                        <div class="text-5xl font-black mb-2 text-blue-500 tracking-tighter">${roomCode}</div>
-                        <p class="text-zinc-600 text-[10px] mb-8 break-all opacity-50 uppercase font-bold">${joinUrl}</p>
+                        <div class="text-5xl font-black mb-8 text-blue-500">${roomCode}</div>
                         
-                        <div class="w-full max-w-lg mb-10">
-                            <p class="text-zinc-500 font-bold mb-4 text-xs uppercase">Joined: ${players.length} / ${state.targetPlayers}</p>
-                            <div class="grid grid-cols-2 gap-2">
-                                ${players.map(p => `<div class="p-3 bg-zinc-900 rounded-lg border border-zinc-800 font-bold italic">✅ ${p.name}</div>`).join('')}
+                        <div class="w-full max-w-2xl mb-10">
+                            <p class="text-zinc-500 font-bold mb-4 text-xs uppercase text-center">Joined: ${players.length} / ${state.targetPlayers}</p>
+                            <div class="grid grid-cols-2 gap-3">
+                                ${players.map(p => `<div class="p-3 bg-zinc-900 rounded-xl border border-zinc-800 font-bold italic">✅ ${p.name}</div>`).join('')}
                             </div>
                         </div>
 
-                        ${players.length >= state.targetPlayers ? 
-                            `<button onclick="startMatch()" class="w-full py-5 bg-white text-black font-bold rounded-2xl animate-bounce">START GAME</button>` : 
-                            `<div class="text-zinc-500 animate-pulse font-bold uppercase text-sm">Waiting for players...</div>`}
+                        <button onclick="startMatch()" class="w-full py-5 bg-white text-black font-bold rounded-2xl ${players.length >= state.targetPlayers ? 'animate-bounce' : 'opacity-50'}">
+                            ${players.length >= state.targetPlayers ? 'START GAME' : 'FORCE START'}
+                        </button>
                     </div>`;
                 
-                // Ensure QR Code generates after the HTML is set
-                setTimeout(() => {
-                    new QRCode(document.getElementById("qrcode"), { text: joinUrl, width: 180, height: 180 });
-                }, 50);
+                setTimeout(() => { new QRCode(document.getElementById("qrcode"), { text: joinUrl, width: 180, height: 180 }); }, 50);
             } else if (state.step === 'playing') {
-                // ... same playing logic as before ...
                 const q = state.questions[state.currentIdx];
                 ui.innerHTML = `
                     <div class="flex justify-between items-center mb-6 px-4">
@@ -107,32 +96,28 @@
                         ${q.a.map(opt => `<div class="p-8 rounded-2xl text-xl font-black ${state.isRevealed ? (opt === q.c ? 'ring-8 ring-white' : 'opacity-10') : ''}" style="background:${opt === q.c && state.isRevealed ? '#22c55e' : '#1a1a1a'}">${opt}</div>`).join('')}
                     </div>`;
             } else if (state.step === 'end') {
-                ui.innerHTML = `<div class="bg-card p-10"><h1 class="text-4xl font-black mb-8 uppercase text-blue-500">Standings</h1>${players.sort((a,b)=>b.score-a.score).map(p=>`<div class="flex justify-between p-4 bg-zinc-900 rounded-xl mb-2 font-bold"><span>${p.name}</span><span>${p.score}</span></div>`).join('')}<button onclick="location.reload()" class="mt-8 w-full py-4 bg-white text-black font-bold rounded-xl">MAIN MENU</button></div>`;
+                ui.innerHTML = `<div class="bg-card p-10"><h1 class="text-4xl font-black mb-8 uppercase text-blue-500">Standings</h1>${players.sort((a,b)=>b.score-a.score).map(p=>`<div class="flex justify-between p-4 bg-zinc-900 rounded-xl mb-2 font-bold"><span>${p.name}</span><span>${p.score}</span></div>`).join('')}<button onclick="location.reload()" class="mt-8 w-full py-4 bg-white text-black font-bold rounded-xl">RESTART</button></div>`;
             }
         }
 
-        // --- NEW RECOVERY LOGIC ---
         function setupLobby() {
-            // 1. Generate local state first so UI doesn't hang
             state.qAmount = document.getElementById('qCount').value;
             state.targetPlayers = parseInt(document.getElementById('pCount').value);
             roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-            
-            // 2. Switch to lobby screen immediately
             state.step = 'lobby';
             render();
 
-            // 3. Initialize PeerJS in background
             peer = new Peer(roomCode);
-            peer.on('error', (err) => {
-                console.error(err);
-                alert("Connection error. Refreshing...");
-                location.reload();
-            });
-
             peer.on('connection', (c) => {
                 c.on('data', (d) => {
-                    if (d.type === 'join') { players.push({ name: d.name, score: 0, conn: c, lastIdx: -1 }); render(); }
+                    if (d.type === 'join') {
+                        const cleanName = d.name.trim();
+                        // Block empty names or duplicates
+                        if (cleanName !== "" && !players.some(p => p.name === cleanName)) {
+                            players.push({ name: cleanName, score: 0, conn: c, lastIdx: -1 });
+                            render();
+                        }
+                    }
                     if (d.type === 'answer' && !state.isRevealed) {
                         const p = players.find(p => p.conn.peer === c.peer);
                         if (p && p.lastIdx < state.currentIdx) {
@@ -145,6 +130,7 @@
         }
 
         async function startMatch() {
+            if (players.length === 0) return alert("Need at least 1 player!");
             const res = await fetch(`https://opentdb.com/api.php?amount=${state.qAmount}&difficulty=easy&type=multiple`);
             const d = await res.json();
             state.questions = d.results.map(q => ({ q: decodeHTML(q.question), c: decodeHTML(q.correct_answer), a: [...q.incorrect_answers.map(decodeHTML), decodeHTML(q.correct_answer)].sort(() => Math.random()-0.5) }));
@@ -177,14 +163,13 @@
             setInterval(() => { if (state.step === 'playing' && !state.isRevealed) { state.timer--; render(); if (state.timer <= 0) reveal(); } }, 1000);
         }
 
-        // --- PLAYER VIEWS ---
         function renderPlayerView(ui, auto) {
             if (state.playerStep === 'playing' && state.activeQ) {
                 ui.innerHTML = `<div class="bg-card p-6"><div class="grid grid-cols-1 gap-4">${state.activeQ.a.map(opt => `<button onclick="sendAns('${opt}')" class="p-10 btn-ios font-black text-xl uppercase">${opt}</button>`).join('')}</div></div>`;
             } else if (state.playerStep === 'locked') {
                 ui.innerHTML = `<div class="bg-card p-12 text-blue-500 font-black animate-pulse uppercase text-2xl italic">Locked In</div>`;
             } else if (state.playerStep === 'end') {
-                ui.innerHTML = `<div class="bg-card p-12"><h2 class="text-2xl font-black mb-8">GAME OVER</h2><button onclick="location.reload()" class="w-full py-6 bg-white text-black font-bold rounded-2xl">RESTART</button></div>`;
+                ui.innerHTML = `<div class="bg-card p-12"><h2 class="text-2xl font-black mb-8 uppercase">Game Finished</h2><button onclick="location.reload()" class="w-full py-6 bg-white text-black font-bold rounded-2xl">RESTART</button></div>`;
             } else {
                 ui.innerHTML = `<div class="bg-card p-8"><input id="pName" type="text" placeholder="NAME" class="w-full p-5 bg-zinc-900 rounded-2xl mb-4 text-center font-bold uppercase"><button onclick="join('${auto}')" class="w-full py-5 bg-blue-600 rounded-2xl font-bold uppercase">Join Game</button></div>`;
             }
